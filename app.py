@@ -1,12 +1,5 @@
-"""Recipe Box API — BE104 course skeleton.
-
-A working Flask + SQLite CRUD API for recipes. It stores data perfectly —
-and it trusts everyone. There is no authentication and no authorization yet.
-That is the point: you will add both, lesson by lesson, in Units 2 and 3.
-"""
-
 import sqlite3
-
+from werkzeug.security import generate_password_hash, check_password_hash
 from flask import Flask, g, jsonify, request
 
 DATABASE = "recipes.db"
@@ -59,7 +52,79 @@ def get_recipe(recipe_id):
         return jsonify({"error": "recipe not found"}), 404
     return jsonify(recipe_to_dict(row))
 
+@app.post("/register")
+def register():
+    data = request.get_json(silent=True)
 
+    # 1) validate required fields
+    if (
+        not isinstance(data, dict)
+        or not data.get("username")
+        or not data.get("email")
+        or not data.get("password")
+    ):
+        return jsonify({"error": "username, email, and password are required"}), 400
+
+    username = str(data["username"]).strip()
+    email = str(data["email"]).strip().lower()
+    password = str(data["password"])
+
+    if not username or "@" not in email:
+        return jsonify({"error": "a valid username and email are required"}), 400
+
+    # 2) hash the password (never store or return the raw password)
+    password_hash = generate_password_hash(password)
+
+    # 3) insert, handling duplicates
+    db = get_db()
+    try:
+        cur = db.execute(
+            "INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
+            (username, email, password_hash),
+        )
+        db.commit()
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "user already exists"}), 409
+
+    # 4) success -> 201 Created (no password or hash)
+    return jsonify({
+        "id": cur.lastrowid,
+        "username": username,
+        "email": email,
+    }), 201
+
+
+@app.post("/login")
+def login():
+    data = request.get_json(silent=True)
+
+    # 1) validate required fields
+    if not isinstance(data, dict) or not data.get("username") or not data.get("password"):
+        return jsonify({"error": "username and password are required"}), 400
+
+    username = str(data["username"]).strip()
+    password = str(data["password"])
+
+    # 2) look up user by username
+    db = get_db()
+    user = db.execute(
+        "SELECT user_id AS id, username, email, password_hash FROM users WHERE username = ?",
+        (username,),
+    ).fetchone()
+
+    # 3) missing user OR wrong password -> same 401 (don't reveal which)
+    if not user or not check_password_hash(user["password_hash"], password):
+        return jsonify({"error": "Invalid credentials"}), 401
+
+    # 4) success -> 200 OK, same shape as register
+    return jsonify(
+    {
+        "user": {
+            "id": user["id"],
+            "username": user["username"],
+        }
+    }
+), 200
 @app.post("/recipes")
 def create_recipe():
     data = request.get_json(silent=True)

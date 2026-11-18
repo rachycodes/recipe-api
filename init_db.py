@@ -10,6 +10,13 @@ CREATE TABLE IF NOT EXISTS recipes (
     instructions TEXT NOT NULL DEFAULT '',
     is_public INTEGER NOT NULL DEFAULT 1
 );
+
+CREATE TABLE IF NOT EXISTS users (
+    user_id INTEGER PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL
+);
 """
 
 SEED = [
@@ -47,3 +54,5 @@ if existing == 0:
 else:
     print(f"recipes.db already has {existing} recipes - nothing to do.")
 connection.close()
+
+
