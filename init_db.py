@@ -1,5 +1,3 @@
-"""Create and seed recipes.db. Run once after cloning: python init_db.py"""
-
 import sqlite3
 
 SCHEMA = """
@@ -15,7 +13,9 @@ CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user'
+        CHECK (role IN ('user', 'admin'))
 );
 """
 
