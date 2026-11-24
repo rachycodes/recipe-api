@@ -14,8 +14,8 @@ def create_app(config_class=DevelopmentConfig):
     print("STARTING APP WITH DATABASE:", app.config["DATABASE"])
 
     # Import blueprints
-    from .auth import auth_bp
-    from .recipes import recipes_bp
+    from .routes.auth import auth_bp
+    from .routes.recipes import recipes_bp
 
     # Register blueprints
     app.register_blueprint(auth_bp)

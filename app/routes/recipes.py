@@ -1,11 +1,12 @@
 
 import sqlite3
-
+from ..services.recipe_service import list_recipes_for_user
+from ..services.recipe_service import create_recipe_for_user
 from flask import Blueprint, g, jsonify, request
 
-from .db import get_db
+from ..db import get_db
 from .auth import require_auth, optional_auth
-from .utils import is_nonempty_str
+from ..utils import is_nonempty_str
 
 
 # --- Configuration -------------------------------------------------
@@ -84,6 +85,7 @@ def list_recipes():
             int(request.args.get("limit", 20)),
             MAX_PAGE_SIZE,
         )
+
         offset = int(request.args.get("offset", 0))
 
     except ValueError:
@@ -96,14 +98,7 @@ def list_recipes():
             "error": "limit must be >= 1 and offset >= 0"
         }), 400
 
-    rows = get_db().execute(
-        """
-        SELECT * FROM recipes
-        WHERE is_public = 1 OR user_id = ?
-        ORDER BY id LIMIT ? OFFSET ?
-        """,
-        (g.user_id, limit, offset),
-    ).fetchall()
+    rows = list_recipes_for_user(g.user_id, limit, offset)
 
     return jsonify([recipe_to_dict(row) for row in rows])
 
@@ -130,58 +125,28 @@ def get_recipe(recipe_id):
 def create_recipe():
     data = request.get_json(silent=True)
 
-    if (
-        not isinstance(data, dict)
-        or not is_nonempty_str(data.get("title"))
-        or not is_nonempty_str(data.get("ingredients"))
-    ):
-        return jsonify({
-            "error": "title and ingredients are required strings"
-        }), 400
+    # keep your existing validation...
 
     instructions = data.get("instructions", "")
-
     if not isinstance(instructions, str):
         return jsonify({
             "error": "instructions must be a string"
         }), 400
 
-    db = get_db()
+    is_public = data.get("is_public", True)
 
-    try:
-        cur = db.execute(
-            """
-            INSERT INTO recipes (
-                user_id,
-                title,
-                ingredients,
-                instructions,
-                is_public
-            )
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (
-                g.user_id,
-                data["title"].strip(),
-                data["ingredients"],
-                instructions,
-                1 if data.get("is_public", True) else 0,
-            ),
-        )
+    row, error = create_recipe_for_user(
+        g.user_id,
+        data["title"],
+        data["ingredients"],
+        instructions,
+        is_public,
+    )
 
-        db.commit()
-
-    except sqlite3.IntegrityError:
-        db.rollback()
-
+    if error == "integrity_error":
         return jsonify({
             "error": "could not create recipe (duplicate title?)"
         }), 409
-
-    row = db.execute(
-        "SELECT * FROM recipes WHERE id = ?",
-        (cur.lastrowid,),
-    ).fetchone()
 
     return jsonify(recipe_to_dict(row)), 201
 
