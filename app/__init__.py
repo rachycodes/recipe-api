@@ -1,7 +1,6 @@
 from flask import Flask
 from dotenv import load_dotenv
-
-from .config import DevelopmentConfig
+from .config import DevelopmentConfig, TestingConfig
 from .db import init_db, close_db
 
 load_dotenv()
@@ -28,3 +27,6 @@ def create_app(config_class=DevelopmentConfig):
     init_db(app.config["DATABASE"])
 
     return app
+
+def create_test_app():
+    return create_app(TestingConfig)
