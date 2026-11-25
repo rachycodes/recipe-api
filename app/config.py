@@ -1,14 +1,28 @@
+
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+
 class Config:
-    """Shared settings. DATABASE is the dev default for now."""
-    DATABASE = "recipes_alt.db"
+    """Shared application settings."""
+
+    DATABASE = str(BASE_DIR / "recipes_alt.db")
+    SQLALCHEMY_DATABASE_URI = f"sqlite:///{DATABASE}"
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+
 
 class DevelopmentConfig(Config):
     pass
 
+
 class ProductionConfig(Config):
-    DATABASE = "recipes.db"
+    DATABASE = str(BASE_DIR / "recipes.db")
+    SQLALCHEMY_DATABASE_URI = f"sqlite:///{DATABASE}"
+
 
 class TestingConfig(DevelopmentConfig):
     TESTING = True
     DEBUG = False
-    DATABASE = "recipes_test.db"
+    DATABASE = str(BASE_DIR / "recipes_test.db")
+    SQLALCHEMY_DATABASE_URI = f"sqlite:///{DATABASE}"
