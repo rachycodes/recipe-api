@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "recipe-box-api"
+version = "0.1"
+description = "A Flask REST API for creating recipes"
+requires-python = ">=3.10"
+
+dependencies = [
+    "Flask",
+    "PyJWT",
+    "python-dotenv"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app", "app.*"]
