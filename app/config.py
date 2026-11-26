@@ -13,7 +13,10 @@ class Config:
 
 class DevelopmentConfig(Config):
     CACHE_TYPE = "SimpleCache"
-
+    RATELIMIT_ENABLED = True
+    RATELIMIT_STORAGE_URI = "memory://"
+    RATELIMIT_DEFAULT = "5 per minute"
+    RATELIMIT_HEADERS_ENABLED = True
 
 class ProductionConfig(Config):
     DATABASE = str(BASE_DIR / "recipes.db")
@@ -25,3 +28,4 @@ class TestingConfig(DevelopmentConfig):
     DEBUG = False
     DATABASE = str(BASE_DIR / "recipes_test.db")
     SQLALCHEMY_DATABASE_URI = f"sqlite:///{DATABASE}"
+    RATELIMIT_ENABLED = False

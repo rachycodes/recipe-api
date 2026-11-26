@@ -13,7 +13,7 @@ from ..services.auth_service import (
     get_user_by_username,
 )
 from ..utils import is_nonempty_str
-
+from ..extensions import limiter
 load_dotenv()
 
 
@@ -144,6 +144,7 @@ def optional_auth(f):
 # --- Registration Route --------------------------------------------
 
 @auth_bp.post("/register")
+@limiter.limit("3 per minute")
 def register():
     data = request.get_json(silent=True)
 
@@ -191,9 +192,8 @@ def register():
 
 # --- Login Route ---------------------------------------------------
 
-# --- Login Route ---------------------------------------------------
-
 @auth_bp.post("/login")
+@limiter.limit("5 per minute")
 def login():
     data = request.get_json(silent=True)
 

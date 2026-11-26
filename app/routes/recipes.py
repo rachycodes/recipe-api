@@ -11,6 +11,7 @@ from ..services.recipe_service import (
 )
 from .auth import require_auth, optional_auth
 from ..utils import is_nonempty_str
+from ..extensions import limiter
 
 
 # --- Configuration -------------------------------------------------
@@ -51,6 +52,7 @@ def recipe_to_dict(row):
 
 @cache.cached(timeout=60)
 @recipes_bp.get("/")
+@limiter.limit("60 per minute")
 @require_auth
 def list_recipes():
     try:
@@ -94,6 +96,7 @@ def get_recipe(recipe_id):
 # --- POST Create Recipe --------------------------------------------
 
 @recipes_bp.post("/")
+@limiter.limit("5 per minute")
 @require_auth
 def create_recipe():
     data = request.get_json(silent=True)
@@ -120,14 +123,13 @@ def create_recipe():
         return jsonify({
             "error": "could not create recipe (duplicate title?)"
         }), 409
-
+    cache.clear()
     return jsonify(recipe_to_dict(row)), 201
 
-
-# --- PATCH Update Recipe -------------------------------------------
 # --- PATCH Update Recipe -------------------------------------------
 
 @recipes_bp.patch("/<int:recipe_id>")
+@limiter.limit("20 per minute")
 @require_auth
 def update_recipe(recipe_id):
     data = request.get_json(silent=True)
@@ -189,12 +191,14 @@ def update_recipe(recipe_id):
         return jsonify({
             "error": "could not update recipe (duplicate title?)"
         }), 409
+    cache.clear()
 
     return jsonify(recipe_to_dict(recipe)), 200
 
 # --- DELETE Recipes -------------------------------------------------
 
 @recipes_bp.delete("/<int:recipe_id>")
+@limiter.limit("10 per minute")
 @require_auth
 def delete_recipe(recipe_id):
 
@@ -218,5 +222,6 @@ def delete_recipe(recipe_id):
         return jsonify({
             "error": "could not delete recipe"
         }), 409
+    cache.clear()
 
     return "", 204

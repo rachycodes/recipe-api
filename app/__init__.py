@@ -1,9 +1,10 @@
-from flask import Flask
+from flask import Flask, jsonify
 from dotenv import load_dotenv
-from .config import DevelopmentConfig, TestingConfig
-from .extensions import db, migrate, cache
 
 load_dotenv()
+
+from .config import DevelopmentConfig, TestingConfig
+from .extensions import db, migrate, cache, limiter
 
 
 def create_app(config_class=DevelopmentConfig):
@@ -19,17 +20,26 @@ def create_app(config_class=DevelopmentConfig):
     db.init_app(app)
     migrate.init_app(app, db)
     cache.init_app(app)
+    limiter.init_app(app)
 
-    # Import the models
+    # Import models
     from .models import User, Recipe
 
-    # Import the blueprints
+    # Import blueprints
     from .routes.auth import auth_bp
     from .routes.recipes import recipes_bp
 
-    # Register the blueprints
+    # Register blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(recipes_bp)
+
+    # Rate limit error handler
+    @app.errorhandler(429)
+    def rate_limit_exceeded(error):
+        return jsonify({
+            "error": "rate limit exceeded",
+            "message": str(error.description),
+        }), 429
 
     return app
 
