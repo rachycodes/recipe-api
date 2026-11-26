@@ -1,10 +1,14 @@
-
-import sqlite3
-from ..services.recipe_service import list_recipes_for_user
-from ..services.recipe_service import create_recipe_for_user
 from flask import Blueprint, g, jsonify, request
-
-from ..db import get_db
+from ..extensions import cache
+from ..models import Recipe
+from ..services.recipe_service import (
+    list_recipes_for_user,
+    create_recipe_for_user,
+    get_visible_recipe,
+    get_owned_recipe,
+    update_recipe_for_user,
+    delete_recipe_for_user,
+)
 from .auth import require_auth, optional_auth
 from ..utils import is_nonempty_str
 
@@ -20,7 +24,20 @@ recipes_bp = Blueprint("recipes", __name__, url_prefix="/recipes")
 
 # --- Helpers -------------------------------------------------------
 
+
 def recipe_to_dict(row):
+    """Serialize both SQLAlchemy objects and SQLite rows."""
+
+    if isinstance(row, Recipe):
+        return {
+            "id": row.id,
+            "user_id": row.user_id,
+            "title": row.title,
+            "ingredients": row.ingredients,
+            "instructions": row.instructions,
+            "is_public": bool(row.is_public),
+        }
+
     return {
         "id": row["id"],
         "user_id": row["user_id"],
@@ -30,53 +47,9 @@ def recipe_to_dict(row):
         "is_public": bool(row["is_public"]),
     }
 
-
-def get_visible_recipe(recipe_id):
-    """A recipe is visible if public or owned by the current user."""
-
-    return get_db().execute(
-        """
-        SELECT * FROM recipes
-        WHERE id = ? AND (is_public = 1 OR user_id = ?)
-        """,
-        (recipe_id, g.user_id),
-    ).fetchone()
-
-
-def get_owned_recipe(recipe_id):
-    return get_db().execute(
-        """
-        SELECT * FROM recipes
-        WHERE id = ? AND user_id = ?
-        """,
-        (recipe_id, g.user_id),
-    ).fetchone()
-
-
-def get_recipe_if_owner_or_admin(recipe_id):
-    db = get_db()
-
-    recipe = db.execute(
-        "SELECT * FROM recipes WHERE id = ?",
-        (recipe_id,),
-    ).fetchone()
-
-    if recipe is None:
-        return jsonify({"error": "recipe not found"}), 404
-
-    is_owner = recipe["user_id"] == g.user_id
-    is_admin = getattr(g, "role", None) == "admin"
-
-    if not (is_owner or is_admin):
-        return jsonify({
-            "error": "forbidden: you cannot delete this recipe"
-        }), 403
-
-    return recipe
-
-
 # --- GET All Recipes -----------------------------------------------
 
+@cache.cached(timeout=60)
 @recipes_bp.get("/")
 @require_auth
 def list_recipes():
@@ -152,6 +125,7 @@ def create_recipe():
 
 
 # --- PATCH Update Recipe -------------------------------------------
+# --- PATCH Update Recipe -------------------------------------------
 
 @recipes_bp.patch("/<int:recipe_id>")
 @require_auth
@@ -163,13 +137,12 @@ def update_recipe(recipe_id):
             "error": "a JSON body is required"
         }), 400
 
-    if get_owned_recipe(recipe_id) is None:
+    if get_owned_recipe(recipe_id, g.user_id) is None:
         return jsonify({
             "error": "recipe not found"
         }), 404
 
-    fields = []
-    values = []
+    updates = {}
 
     for column in ("title", "ingredients"):
         if column in data:
@@ -179,9 +152,7 @@ def update_recipe(recipe_id):
                     "error": f"{column} must be a non-empty string"
                 }), 400
 
-            fields.append(f"{column} = ?")
-
-            values.append(
+            updates[column] = (
                 data[column].strip()
                 if column == "title"
                 else data[column]
@@ -193,63 +164,59 @@ def update_recipe(recipe_id):
                 "error": "instructions must be a string"
             }), 400
 
-        fields.append("instructions = ?")
-        values.append(data["instructions"])
+        updates["instructions"] = data["instructions"]
 
     if "is_public" in data:
-        fields.append("is_public = ?")
-        values.append(1 if data["is_public"] else 0)
+        updates["is_public"] = bool(data["is_public"])
 
-    if not fields:
+    if not updates:
         return jsonify({
             "error": "nothing to update"
         }), 400
 
-    values.extend([recipe_id, g.user_id])
+    recipe, error = update_recipe_for_user(
+        recipe_id,
+        g.user_id,
+        updates,
+    )
 
-    db = get_db()
+    if error == "not_found":
+        return jsonify({
+            "error": "recipe not found"
+        }), 404
 
-    try:
-        db.execute(
-            f"""
-            UPDATE recipes
-            SET {', '.join(fields)}
-            WHERE id = ? AND user_id = ?
-            """,
-            values,
-        )
-
-        db.commit()
-
-    except sqlite3.IntegrityError:
-        db.rollback()
-
+    if error == "integrity_error":
         return jsonify({
             "error": "could not update recipe (duplicate title?)"
         }), 409
 
-    return jsonify(
-        recipe_to_dict(get_owned_recipe(recipe_id))
-    )
+    return jsonify(recipe_to_dict(recipe)), 200
 
-
-# --- DELETE Recipe -------------------------------------------------
+# --- DELETE Recipes -------------------------------------------------
 
 @recipes_bp.delete("/<int:recipe_id>")
 @require_auth
 def delete_recipe(recipe_id):
-    result = get_recipe_if_owner_or_admin(recipe_id)
 
-    if not isinstance(result, sqlite3.Row):
-        return result
-
-    db = get_db()
-
-    db.execute(
-        "DELETE FROM recipes WHERE id = ?",
-        (recipe_id,),
+    error = delete_recipe_for_user(
+        recipe_id,
+        g.user_id,
+        getattr(g, "role", None),
     )
 
-    db.commit()
+    if error == "not_found":
+        return jsonify({
+            "error": "recipe not found"
+        }), 404
+
+    if error == "forbidden":
+        return jsonify({
+            "error": "forbidden: you cannot delete this recipe"
+        }), 403
+
+    if error == "integrity_error":
+        return jsonify({
+            "error": "could not delete recipe"
+        }), 409
 
     return "", 204

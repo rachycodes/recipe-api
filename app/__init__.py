@@ -1,7 +1,7 @@
 from flask import Flask
 from dotenv import load_dotenv
 from .config import DevelopmentConfig, TestingConfig
-from .db import init_db, close_db
+from .extensions import db, migrate, cache
 
 load_dotenv()
 
@@ -10,23 +10,29 @@ def create_app(config_class=DevelopmentConfig):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
-    print("STARTING APP WITH DATABASE:", app.config["DATABASE"])
+    print(
+        "STARTING APP WITH DATABASE:",
+        app.config["SQLALCHEMY_DATABASE_URI"]
+    )
 
-    # Import blueprints
+    # Initialize extensions
+    db.init_app(app)
+    migrate.init_app(app, db)
+    cache.init_app(app)
+
+    # Import the models
+    from .models import User, Recipe
+
+    # Import the blueprints
     from .routes.auth import auth_bp
     from .routes.recipes import recipes_bp
 
-    # Register blueprints
+    # Register the blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(recipes_bp)
 
-    # Database cleanup
-    app.teardown_appcontext(close_db)
-
-    # Initialize database
-    init_db(app.config["DATABASE"])
-
     return app
+
 
 def create_test_app():
     return create_app(TestingConfig)

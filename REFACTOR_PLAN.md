@@ -28,3 +28,5 @@ app/
   routes.py
   services.py
   data.py
+ config.py        # configuration (DB path, secrets, etc.)
+ wsgi.py

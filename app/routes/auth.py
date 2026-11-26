@@ -1,17 +1,17 @@
 import os
-import sqlite3
 from datetime import datetime, timedelta, timezone
 from functools import wraps
-
+from ..services.auth_service import create_user
 import jwt
 from dotenv import load_dotenv
 from flask import Blueprint, g, jsonify, request
 from werkzeug.security import (
-    check_password_hash,
-    generate_password_hash,
+    check_password_hash
 )
-
-from ..db import get_db
+from ..services.auth_service import (
+    create_user,
+    get_user_by_username,
+)
 from ..utils import is_nonempty_str
 
 load_dotenv()
@@ -40,10 +40,10 @@ def make_token(user):
     now = datetime.now(timezone.utc)
 
     payload = {
-        "sub": str(user["id"]),
-        "username": user["username"],
+        "sub": str(user.id),
+        "username": user.username,
         "iat": now,
-        "role": user["role"],
+        "role": user.role,
         "exp": now + timedelta(hours=JWT_EXPIRES_HOURS),
     }
 
@@ -171,36 +171,25 @@ def register():
             "error": f"password must be at least {MIN_PASSWORD_LENGTH} characters"
         }), 400
 
-    db = get_db()
+    user, error = create_user(
+        username,
+        email,
+        password,
+    )
 
-    try:
-        cur = db.execute(
-            """
-            INSERT INTO users (username, email, password_hash)
-            VALUES (?, ?, ?)
-            """,
-            (
-                username,
-                email,
-                generate_password_hash(password),
-            ),
-        )
-
-        db.commit()
-
-    except sqlite3.IntegrityError:
-        db.rollback()
-
+    if error == "integrity_error":
         return jsonify({
             "error": "user already exists"
         }), 409
 
     return jsonify({
-        "id": cur.lastrowid,
-        "username": username,
-        "email": email,
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
     }), 201
 
+
+# --- Login Route ---------------------------------------------------
 
 # --- Login Route ---------------------------------------------------
 
@@ -220,17 +209,10 @@ def login():
     username = data["username"].strip()
     password = data["password"]
 
-    user = get_db().execute(
-        """
-        SELECT id, username, password_hash, role
-        FROM users
-        WHERE username = ?
-        """,
-        (username,),
-    ).fetchone()
+    user = get_user_by_username(username)
 
     if user is None or not check_password_hash(
-        user["password_hash"],
+        user.password_hash,
         password,
     ):
         return jsonify({
@@ -240,7 +222,7 @@ def login():
     return jsonify({
         "token": make_token(user),
         "user": {
-            "id": user["id"],
-            "username": user["username"],
+            "id": user.id,
+            "username": user.username,
         },
     }), 200
